@@ -1,0 +1,4 @@
+[build]
+# Build output lives in <repo root>/target instead of src-tauri/target.
+# Relative to the parent of this .cargo folder (src-tauri).
+target-dir = "../target"
