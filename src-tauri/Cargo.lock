@@ -3677,6 +3677,7 @@ dependencies = [
  "tokio",
  "windows",
  "windows-core",
+ "windows-registry",
 ]
 
 [[package]]

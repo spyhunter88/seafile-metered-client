@@ -92,7 +92,19 @@ export interface PatternGroup {
   patterns: string[];
 }
 
+export type IntegrationState = "NotInstalled" | "Installed" | "Broken" | "OtherOwner";
+
+export interface IntegrationStatus {
+  state: IntegrationState;
+  dll_path: string | null;
+  bundled_available: boolean;
+}
+
 export const api = {
+  getExplorerIntegration: () => invoke<IntegrationStatus>("get_explorer_integration"),
+  installExplorerIntegration: () => invoke<void>("install_explorer_integration"),
+  uninstallExplorerIntegration: () => invoke<void>("uninstall_explorer_integration"),
+  restartExplorer: () => invoke<void>("restart_explorer"),
   getGeneralSettings: () => invoke<GeneralSettings>("get_general_settings"),
   setGeneralSettings: (settings: GeneralSettings) => invoke<void>("set_general_settings", { settings }),
   getTempIgnorePatterns: () => invoke<PatternGroup[]>("get_temp_ignore_patterns"),

@@ -3,6 +3,7 @@ mod commands;
 mod ignore_rules;
 mod daemon;
 mod data_location;
+mod explorer_integration;
 mod network_watcher;
 mod seaf_rpc;
 mod shell_ext;
@@ -115,6 +116,10 @@ pub fn run() {
             commands::pick_folder,
             commands::get_storage_settings,
             commands::move_data_location,
+            commands::get_explorer_integration,
+            commands::install_explorer_integration,
+            commands::uninstall_explorer_integration,
+            commands::restart_explorer,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

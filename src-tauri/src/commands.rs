@@ -9,6 +9,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::activity::EVT_HISTORY;
 use crate::data_location::{self, LocationKind, LocationSetting, StorageSettings};
+use crate::explorer_integration;
 use crate::seaf_rpc::obj_field;
 use crate::state::{
     AppState, HistoryEntry, HistorySettings, LibrarySyncConfig, NetworkCost, Preferences, Session, SyncStatus,
@@ -563,4 +564,29 @@ pub async fn move_data_location(
         custom_path: if kind == LocationKind::Custom { custom_path } else { None },
     };
     data_location::move_data(&app, &state, target).await
+}
+
+// ---- Explorer integration (overlay icons) ----------------------------------
+
+#[tauri::command]
+pub fn get_explorer_integration(app: AppHandle) -> explorer_integration::IntegrationStatus {
+    explorer_integration::status(&app)
+}
+
+/// Registers the overlay icon extension (shows a UAC prompt).
+#[tauri::command]
+pub async fn install_explorer_integration(app: AppHandle) -> Result<(), String> {
+    explorer_integration::install(&app).await
+}
+
+#[tauri::command]
+pub async fn uninstall_explorer_integration() -> Result<(), String> {
+    explorer_integration::uninstall().await
+}
+
+#[tauri::command]
+pub async fn restart_explorer() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(explorer_integration::restart_explorer)
+        .await
+        .map_err(|e| e.to_string())?
 }

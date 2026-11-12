@@ -8,6 +8,7 @@ import {
   type PatternGroup,
   type StorageSettings,
 } from "../api";
+import { ExplorerIntegration } from "./ExplorerIntegration";
 import { useToast } from "./Toasts";
 
 const labels: Record<LocationKind, { title: string; hint: string }> = {
@@ -185,6 +186,10 @@ function GeneralTab() {
           )}
         </div>
       )}
+
+      <div className="pt-2">
+        <ExplorerIntegration />
+      </div>
     </div>
   );
 }
