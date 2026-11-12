@@ -81,7 +81,22 @@ export interface LibraryError {
   message: string;
 }
 
+export interface GeneralSettings {
+  autostart: boolean;
+  start_minimized: boolean;
+  ignore_temp_files: boolean;
+}
+
+export interface PatternGroup {
+  name: string;
+  patterns: string[];
+}
+
 export const api = {
+  getGeneralSettings: () => invoke<GeneralSettings>("get_general_settings"),
+  setGeneralSettings: (settings: GeneralSettings) => invoke<void>("set_general_settings", { settings }),
+  getTempIgnorePatterns: () => invoke<PatternGroup[]>("get_temp_ignore_patterns"),
+  openSettingsWindow: () => invoke<void>("open_settings_window"),
   openLibraryFolder: (repoId: string) => invoke<void>("open_library_folder", { repoId }),
   openLibraryOnCloud: (repoId: string, repoName: string) =>
     invoke<void>("open_library_on_cloud", { repoId, repoName }),
@@ -136,6 +151,28 @@ export function formatRate(bytesPerSec: number): string {
 
 export function formatTime(unixSecs: number): string {
   return new Date(unixSecs * 1000).toLocaleString();
+}
+
+const relativeFmt = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 365 * 86400],
+  ["month", 30 * 86400],
+  ["week", 7 * 86400],
+  ["day", 86400],
+  ["hour", 3600],
+  ["minute", 60],
+];
+
+/** "just now", "5 minutes ago", "yesterday", ... */
+export function formatRelative(unixSecs: number, nowSecs = Date.now() / 1000): string {
+  const diff = unixSecs - nowSecs;
+  if (Math.abs(diff) < 45) return "just now";
+  for (const [unit, secs] of RELATIVE_STEPS) {
+    if (Math.abs(diff) >= secs || unit === "minute") {
+      return relativeFmt.format(Math.round(diff / secs), unit);
+    }
+  }
+  return "just now";
 }
 
 export function errorMessage(e: unknown): string {

@@ -90,6 +90,24 @@ impl HistorySettings {
     }
 }
 
+/// App preferences stored in the config DB. "Start with Windows" itself lives
+/// in the registry Run key (autostart plugin), not here.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Preferences {
+    /// When launched by Windows at sign-in, stay in the tray instead of showing the window.
+    pub start_minimized: bool,
+    /// Maintain temp-file rules in each library's `seafile-ignore.txt`.
+    pub ignore_temp_files: bool,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        // Off by default: the ignore file is synced to the server like any other file.
+        Self { start_minimized: true, ignore_temp_files: false }
+    }
+}
+
 /// Account session. The whole struct is stored DPAPI-encrypted on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -157,10 +175,13 @@ pub struct AppState {
     /// (network events, tray actions and UI commands can race otherwise).
     pub lib_lock: tokio::sync::Mutex<()>,
     pub transfer: Mutex<TransferRate>,
+    /// Libraries whose `seafile-ignore.txt` already matches the preference this session.
+    pub ignore_applied: Mutex<std::collections::HashSet<String>>,
 }
 
 const SESSION_KEY: &[u8] = b"session";
 const HISTORY_SETTINGS_KEY: &[u8] = b"history_settings";
+const PREFERENCES_KEY: &[u8] = b"preferences";
 
 impl AppState {
     pub fn new(location: LocationSetting, paths: AppPaths, warning: Option<String>) -> Result<Self, String> {
@@ -185,6 +206,7 @@ impl AppState {
             daemon_error: Mutex::new(None),
             lib_lock: tokio::sync::Mutex::new(()),
             transfer: Mutex::new(TransferRate::default()),
+            ignore_applied: Mutex::new(Default::default()),
         })
     }
 
@@ -272,6 +294,25 @@ impl AppState {
     pub fn remove_library(&self, repo_id: &str) -> Result<(), String> {
         self.with_storage(|s| {
             s.libraries.remove(repo_id.as_bytes()).map_err(|e| e.to_string())?;
+            s.db.flush().map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    // ---- Preferences -----------------------------------------------------
+
+    pub fn preferences(&self) -> Preferences {
+        self.with_storage(|s| Ok(s.settings.get(PREFERENCES_KEY).ok().flatten()))
+            .ok()
+            .flatten()
+            .and_then(|v| serde_json::from_slice(&v).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn set_preferences(&self, prefs: Preferences) -> Result<(), String> {
+        let bytes = serde_json::to_vec(&prefs).map_err(|e| e.to_string())?;
+        self.with_storage(|s| {
+            s.settings.insert(PREFERENCES_KEY, bytes).map_err(|e| e.to_string())?;
             s.db.flush().map_err(|e| e.to_string())?;
             Ok(())
         })

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errorMessage, events, formatTime, type HistoryEntry, type HistorySettings } from "../api";
+import {
+  api,
+  errorMessage,
+  events,
+  formatRelative,
+  formatTime,
+  type HistoryEntry,
+  type HistorySettings,
+} from "../api";
 import { useToast } from "./Toasts";
 
 const AGE_OPTIONS = [1, 3, 7, 14, 30, 90, 365];
@@ -14,6 +22,9 @@ export function HistoryPanel() {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [settings, setSettings] = useState<HistorySettings | null>(null);
   const [saving, setSaving] = useState(false);
+  // Click any time to switch the whole list between "5 minutes ago" and full date/time.
+  const [absolute, setAbsolute] = useState(false);
+  const now = useNow(30_000);
 
   const load = useCallback(() => {
     api.getSyncHistory().then(setEntries).catch(console.error);
@@ -109,7 +120,7 @@ export function HistoryPanel() {
                 <div className="min-w-0 flex-1">
                   <div className="flex gap-2">
                     <span className="truncate font-medium text-slate-800">{e.repo_name || e.repo_id}</span>
-                    <span className="ml-auto whitespace-nowrap text-slate-400">{formatTime(e.time)}</span>
+                    <TimeCell time={e.time} now={now} absolute={absolute} onToggle={() => setAbsolute((v) => !v)} />
                   </div>
                   <div className={e.kind === "Error" ? "text-rose-700" : "text-slate-600"}>{e.detail}</div>
                   {e.path && <div className="truncate font-mono text-slate-500" title={e.path}>{e.path}</div>}
@@ -121,6 +132,41 @@ export function HistoryPanel() {
       </div>
     </div>
   );
+}
+
+/** Relative time; hover shows the exact date/time, click toggles the display. */
+function TimeCell({
+  time,
+  now,
+  absolute,
+  onToggle,
+}: {
+  time: number;
+  now: number;
+  absolute: boolean;
+  onToggle: () => void;
+}) {
+  const exact = formatTime(time);
+  return (
+    <button
+      type="button"
+      className="ml-auto whitespace-nowrap text-slate-400 hover:text-slate-600"
+      title={absolute ? formatRelative(time, now) : exact}
+      onClick={onToggle}
+    >
+      {absolute ? exact : formatRelative(time, now)}
+    </button>
+  );
+}
+
+/** Current time in seconds, refreshed periodically so relative labels stay correct. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now() / 1000), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
 }
 
 /** Keeps a stored value selectable even if it is not one of the presets. */

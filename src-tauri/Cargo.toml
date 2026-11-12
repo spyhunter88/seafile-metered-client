@@ -1,6 +1,6 @@
 [package]
 name = "seafile-metered-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
@@ -42,6 +42,7 @@ base64 = "0.22"
 reqwest = { version = "0.13.5", features = ["json", "form"] }
 notify = "8.2.2"
 sled = "0.34.7"
+tauri-plugin-autostart = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

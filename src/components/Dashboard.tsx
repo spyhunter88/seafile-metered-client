@@ -12,7 +12,6 @@ import {
 import { NetworkBadge } from "./Badges";
 import { HistoryPanel } from "./HistoryPanel";
 import { LibraryRow } from "./LibraryRow";
-import { Settings } from "./Settings";
 import { StatusBar } from "./StatusBar";
 import { useToast } from "./Toasts";
 
@@ -26,7 +25,6 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [tab, setTab] = useState<"libraries" | "history">("libraries");
@@ -148,7 +146,7 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
         </div>
         <button
           className="rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50"
-          onClick={() => setShowSettings(true)}
+          onClick={() => api.openSettingsWindow().catch((e) => toast("error", "Cannot open Settings", errorMessage(e)))}
         >
           Settings
         </button>
@@ -159,15 +157,6 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
           Log out
         </button>
       </header>
-
-      {showSettings && (
-        <Settings
-          onClose={() => {
-            setShowSettings(false);
-            refreshStatus();
-          }}
-        />
-      )}
 
       {storageWarning && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">{storageWarning}</div>

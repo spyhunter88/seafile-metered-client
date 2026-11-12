@@ -1,5 +1,6 @@
 mod activity;
 mod commands;
+mod ignore_rules;
 mod daemon;
 mod data_location;
 mod network_watcher;
@@ -12,10 +13,13 @@ mod tray;
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
+use tauri_plugin_autostart::ManagerExt;
 
 use state::AppState;
 
 pub const EVT_DAEMON_ERROR: &str = "daemon-error";
+/// Passed by the Windows Run key so a sign-in launch can stay in the tray.
+const AUTOSTART_ARG: &str = "--autostart";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +28,12 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_main_window(app);
         }))
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("Seafile Metered Client")
+                .arg(AUTOSTART_ARG)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -35,6 +45,19 @@ pub fn run() {
             let state = Arc::new(AppState::new(location, paths, warning)?);
             app.manage(state.clone());
             tray::setup(app.handle())?;
+
+            // The window is created hidden (tauri.conf.json) so a minimized start never flashes it.
+            let from_autostart = std::env::args().any(|a| a == AUTOSTART_ARG);
+            if !(from_autostart && state.preferences().start_minimized) {
+                tray::show_main_window(app.handle());
+            }
+            // Re-register so the Run key follows the exe if the portable folder was moved.
+            let launcher = app.autolaunch();
+            if launcher.is_enabled().unwrap_or(false)
+                && let Err(e) = launcher.enable()
+            {
+                eprintln!("[autostart] cannot refresh Run key: {e}");
+            }
 
             // Serve the Seafile Explorer extension (overlay icons).
             shell_ext::start(app.handle().clone(), state.clone());
@@ -62,8 +85,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing the window keeps the app running in the system tray.
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            // Closing the main window keeps the app running in the system tray.
+            // Other windows (Settings) close normally.
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+            {
                 api.prevent_close();
                 let _ = window.hide();
             }
@@ -87,6 +113,10 @@ pub fn run() {
             commands::get_history_settings,
             commands::set_history_settings,
             commands::clear_sync_history,
+            commands::open_settings_window,
+            commands::get_general_settings,
+            commands::get_temp_ignore_patterns,
+            commands::set_general_settings,
             commands::get_network_status,
             commands::get_daemon_error,
             commands::pick_folder,

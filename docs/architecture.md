@@ -35,15 +35,27 @@ src-tauri/
 ├── binaries/
 │   ├── seaf-daemon-x86_64-pc-windows-msvc.exe
 │   └── *.dll (libsearpc.dll, libseafile.dll, etc.)
+├── icons/                    # Generated from public/app-icon.svg
 ├── src/
-│   ├── main.rs               # Entry point & Tauri Builder
-│   ├── state.rs              # AppState & Sled DB wrapper
+│   ├── main.rs / lib.rs      # Entry point & Tauri Builder, plugins, startup visibility
+│   ├── state.rs              # AppState & Sled DB wrapper (libraries, settings, history)
 │   ├── network_watcher.rs    # Windows COM NLM Event Listener
-│   ├── sync_controller.rs    # Core logic matrix for pause/resume
+│   ├── sync_controller.rs    # Core logic matrix for pause/resume, live status
 │   ├── seaf_rpc.rs           # RPC wrapper to communicate with seaf-daemon
+│   ├── activity.rs           # Poller: transfer rates, tray status, notification queue -> history
+│   ├── ignore_rules.rs       # Managed temp-file block in seafile-ignore.txt
+│   ├── tray.rs               # Tray menu, tooltip, status badge rendering
+│   ├── daemon.rs             # seaf-daemon spawn/stop (Job Object)
+│   ├── data_location.rs      # Data folder selection and move
+│   ├── shell_ext.rs          # Explorer overlay icon server
 │   └── commands.rs           # Tauri IPC commands exposed to UI
+├── build.rs                  # tauri-build + rerun when icons/ changes
 └── tauri.conf.json
 ```
+
+Windows: `main` (created hidden, shown in setup unless it is a minimized autostart launch; closing hides it to the tray)
+and `settings` (created on demand by `open_settings_window`, parent = `main`, closes normally).
+Both load `index.html`; `src/main.tsx` renders `SettingsWindow` or `App` based on the window label.
 
 ### 2.2 Data Models (`state.rs`)
 ```rust
@@ -73,7 +85,44 @@ pub enum NetworkCost {
     Unmetered,
     Metered,
 }
+
+pub struct TransferRate { pub upload: u64, pub download: u64 }      // bytes/s
+
+pub struct HistoryEntry {
+    pub id: u64, pub time: i64,                                        // unix seconds
+    pub repo_id: String, pub repo_name: String,
+    pub kind: HistoryKind,                                             // Synced | Error
+    pub detail: String,                                                // commit desc / error text
+    pub path: Option<String>,
+}
+
+pub struct HistorySettings { pub max_age_days: u32, pub max_records: u32 }   // default 7 / 200
+
+pub struct Preferences { pub start_minimized: bool, pub ignore_temp_files: bool }  // default true / false
 ```
+
+Sled trees: `libraries` (key = repo id), `settings` (`session` DPAPI-encrypted, `history_settings`, `preferences`),
+`history` (key = big-endian id, oldest first; pruned by age and count on every insert).
+
+### 2.5 Activity Poller (`activity.rs`)
+Loop: every 1 s while data moves, 3 s when idle.
+1. `seafile_get_upload_rate` / `seafile_get_download_rate` → `transfer-rate` event + tray tooltip (only on change).
+2. Overall tray status: `daemon_error` → Error; RPC disabled (starting / moving data) → Normal;
+   otherwise `live_status` of every library (Error wins, any Syncing or rate > 0 → Syncing).
+   The icon is redrawn only when the status changes.
+3. `ignore_rules::sync_pending`: writes/removes the temp-file block for ready libraries not handled yet this session
+   (reset when the preference changes; failures retried on the next tick).
+4. Drains `seafile_get_sync_notification` (max 200/tick): `sync.done` (`name\tid\tcommit\tparent\tdesc`) and
+   `sync.error` (JSON with `err_id`) become history entries → `history-updated` event.
+   Draining also keeps the daemon's in-memory queue bounded.
+
+### 2.6 Tray Badge (`tray.rs`)
+The unbadged default window icon is kept as RGBA; `badged_icon` draws an anti-aliased dot with a white ring in the
+bottom-right corner (radius 24 % of the icon size), green / blue / red for Normal / Syncing / Error.
+
+### 2.7 Autostart
+`tauri-plugin-autostart` registers the exe with the `--autostart` argument. In `setup`, the main window is shown
+unless the process was started with `--autostart` and `Preferences.start_minimized` is true.
 
 ### 2.3 Network Watcher Thread (`network_watcher.rs`)
 - Implements Windows COM `INetworkListManagerEvents` interface.
@@ -132,5 +181,8 @@ pub async fn handle_network_change(cost: NetworkCost, state: &AppState) {
 | `get_sync_history` | None | `Vec<HistoryEntry>` | Recent sync history, newest first |
 | `get_history_settings` / `set_history_settings` | `settings` | `HistorySettings` | Retention: max age (days) and max records |
 | `clear_sync_history` | None | `Result<(), String>` | Delete all history entries |
+| `open_settings_window` | None | `Result<(), String>` | Open or focus the Settings window |
+| `get_general_settings` / `set_general_settings` | `settings` | `GeneralSettings` | Autostart, start minimized, ignore temp files |
+| `get_temp_ignore_patterns` | None | `Vec<PatternGroup>` | Pattern groups written by "Ignore temporary files" |
 
 Events: `transfer-rate` (payload `TransferRate`), `history-updated`. The `activity.rs` poller reads rates every 1 s while transferring (3 s when idle), updates the tray tooltip, and drains the daemon notification queue (`sync.done`, `sync.error`) into the `history` sled tree.

@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -10,7 +11,8 @@ use crate::activity::EVT_HISTORY;
 use crate::data_location::{self, LocationKind, LocationSetting, StorageSettings};
 use crate::seaf_rpc::obj_field;
 use crate::state::{
-    AppState, HistoryEntry, HistorySettings, LibrarySyncConfig, NetworkCost, Session, SyncStatus, TransferRate,
+    AppState, HistoryEntry, HistorySettings, LibrarySyncConfig, NetworkCost, Preferences, Session, SyncStatus,
+    TransferRate,
 };
 use crate::sync_controller::{self, EVT_LIBRARIES};
 
@@ -410,6 +412,78 @@ pub async fn get_library_errors(state: AppStateRef<'_>, repo_id: String) -> Resu
         });
     }
     Ok(out)
+}
+
+// ---- General settings -----------------------------------------------------
+
+pub const SETTINGS_WINDOW: &str = "settings";
+
+/// Opens the Settings window (or focuses it if already open). It is owned by
+/// the main window: stays above it and has no separate taskbar button.
+#[tauri::command]
+pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(SETTINGS_WINDOW) {
+        let _ = w.unminimize();
+        let _ = w.show();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    let mut builder = WebviewWindowBuilder::new(&app, SETTINGS_WINDOW, WebviewUrl::App("index.html".into()))
+        .title("Settings - Seafile Metered Client")
+        .inner_size(600.0, 560.0)
+        .min_inner_size(480.0, 420.0)
+        .center();
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| e.to_string())?;
+    }
+    builder.build().map_err(|e| format!("Cannot open Settings: {e}"))?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GeneralSettings {
+    /// Registered in HKCU\...\Run (read from the registry, not cached).
+    pub autostart: bool,
+    pub start_minimized: bool,
+    pub ignore_temp_files: bool,
+}
+
+#[tauri::command]
+pub fn get_general_settings(app: AppHandle, state: AppStateRef<'_>) -> Result<GeneralSettings, String> {
+    let prefs = state.preferences();
+    Ok(GeneralSettings {
+        autostart: app.autolaunch().is_enabled().map_err(|e| format!("Cannot read autostart: {e}"))?,
+        start_minimized: prefs.start_minimized,
+        ignore_temp_files: prefs.ignore_temp_files,
+    })
+}
+
+#[tauri::command]
+pub fn set_general_settings(
+    app: AppHandle,
+    state: AppStateRef<'_>,
+    settings: GeneralSettings,
+) -> Result<(), String> {
+    let launcher = app.autolaunch();
+    if launcher.is_enabled().ok() != Some(settings.autostart) {
+        let res = if settings.autostart { launcher.enable() } else { launcher.disable() };
+        res.map_err(|e| format!("Cannot change autostart: {e}"))?;
+    }
+    let previous = state.preferences();
+    state.set_preferences(Preferences {
+        start_minimized: settings.start_minimized,
+        ignore_temp_files: settings.ignore_temp_files,
+    })?;
+    if previous.ignore_temp_files != settings.ignore_temp_files {
+        // The activity poller rewrites every library's ignore file within a few seconds.
+        state.ignore_applied.lock().unwrap().clear();
+    }
+    Ok(())
+}
+
+/// Temp-file patterns written by the "ignore temporary files" option (for the UI).
+#[tauri::command]
+pub fn get_temp_ignore_patterns() -> &'static [crate::ignore_rules::PatternGroup] {
+    crate::ignore_rules::TEMP_PATTERNS
 }
 
 // ---- Activity & history ---------------------------------------------------

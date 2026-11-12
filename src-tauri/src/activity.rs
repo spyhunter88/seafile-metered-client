@@ -77,6 +77,10 @@ async fn overall_status(state: &AppState, transferring: bool) -> TrayStatus {
     } else {
         state.rpc.get_clone_tasks().await.unwrap_or_default()
     };
+    // Write temp-file ignore rules into libraries that are ready and not handled yet.
+    for e in crate::ignore_rules::sync_pending(state, &clone_tasks).await {
+        eprintln!("[ignore] {e}");
+    }
     let mut syncing = transferring;
     for lib in &libs {
         match live_status(state, lib, &clone_tasks).await {
