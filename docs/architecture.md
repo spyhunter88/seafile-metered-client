@@ -53,8 +53,11 @@ src-tauri/
 └── tauri.conf.json
 ```
 
-Windows: `main` (created hidden, shown in setup unless it is a minimized autostart launch; closing hides it to the tray)
-and `settings` (created on demand by `open_settings_window`, parent = `main`, closes normally).
+Windows: `main` (declared in `tauri.conf.json` with `create: false`; `tray::show_main_window` builds it from that
+config on demand: at startup unless it is a minimized autostart launch, from the tray, or from a second launch).
+Closing `main` destroys it, so no WebView2 process stays alive while the app sits in the tray; `RunEvent::ExitRequested`
+with `code: None` (last window closed) is prevented, and only the tray "Exit" (`app.exit(0)`) quits.
+`settings` is created on demand by `open_settings_window`, parent = `main`, and is destroyed with it.
 Both load `index.html`; `src/main.tsx` renders `SettingsWindow` or `App` based on the window label.
 
 ### 2.2 Data Models (`state.rs`)

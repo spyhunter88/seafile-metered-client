@@ -12,7 +12,7 @@ mod tray;
 
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_autostart::ManagerExt;
 
 use state::AppState;
@@ -46,7 +46,8 @@ pub fn run() {
             app.manage(state.clone());
             tray::setup(app.handle())?;
 
-            // The window is created hidden (tauri.conf.json) so a minimized start never flashes it.
+            // The main window is not created at startup (tauri.conf.json `create: false`),
+            // so a minimized start never loads WebView2 at all.
             let from_autostart = std::env::args().any(|a| a == AUTOSTART_ARG);
             if !(from_autostart && state.preferences().start_minimized) {
                 tray::show_main_window(app.handle());
@@ -84,16 +85,8 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Closing the main window keeps the app running in the system tray.
-            // Other windows (Settings) close normally.
-            if let WindowEvent::CloseRequested { api, .. } = event
-                && window.label() == "main"
-            {
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
+        // Closing a window destroys it (Settings is owned by main and goes with it).
+        // The app keeps running in the tray: see RunEvent::ExitRequested below.
         .invoke_handler(tauri::generate_handler![
             commands::login,
             commands::logout,
@@ -126,13 +119,17 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app, event| {
-        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
+    app.run(|app, event| match event {
+        // `code: None` = the last window was closed. Stay in the tray with no
+        // webview alive; only an explicit `app.exit()` (tray "Exit") quits.
+        RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        RunEvent::ExitRequested { .. } | RunEvent::Exit => {
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 daemon::stop(&state);
             }
             // Clear overlay icons, as seafile-applet does on exit.
             shell_ext::refresh_explorer();
         }
+        _ => {}
     });
 }

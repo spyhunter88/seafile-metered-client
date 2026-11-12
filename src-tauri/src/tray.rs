@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder, Wry};
 
 use crate::activity::format_rate;
 use crate::state::{AppState, NetworkCost};
@@ -56,12 +56,42 @@ fn network_label(cost: NetworkCost) -> &'static str {
     }
 }
 
+pub const MAIN_WINDOW: &str = "main";
+
+/// Shows the main window, creating it if needed.
+///
+/// The window is destroyed (not hidden) when closed so WebView2 and its
+/// renderer processes are released while the app sits in the tray. It is
+/// declared in tauri.conf.json with `create: false` and built from that config.
 pub fn show_main_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+        focus(&w);
+        return;
     }
+    // Building a webview window from a tray / single-instance callback on the
+    // main thread can deadlock on Windows (wry#583), so do it off-thread.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // A second request may have created it while this task was queued.
+        if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+            focus(&w);
+            return;
+        }
+        let Some(config) = app.config().app.windows.iter().find(|w| w.label == MAIN_WINDOW).cloned() else {
+            eprintln!("[window] no '{MAIN_WINDOW}' window in tauri.conf.json");
+            return;
+        };
+        match WebviewWindowBuilder::from_config(&app, &config).and_then(|b| b.build()) {
+            Ok(w) => focus(&w),
+            Err(e) => eprintln!("[window] cannot create main window: {e}"),
+        }
+    });
+}
+
+fn focus(w: &WebviewWindow) {
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {

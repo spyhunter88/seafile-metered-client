@@ -432,7 +432,7 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
         .inner_size(600.0, 560.0)
         .min_inner_size(480.0, 420.0)
         .center();
-    if let Some(main) = app.get_webview_window("main") {
+    if let Some(main) = app.get_webview_window(crate::tray::MAIN_WINDOW) {
         builder = builder.parent(&main).map_err(|e| e.to_string())?;
     }
     builder.build().map_err(|e| format!("Cannot open Settings: {e}"))?;

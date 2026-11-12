@@ -20,6 +20,8 @@ Versions follow `version` in `package.json`, `src-tauri/tauri.conf.json` and `sr
 - App version in the main window header.
 
 ### Changed
+- Closing the main window now destroys it instead of hiding it, and a minimized start never creates it, so
+  WebView2 is not kept in memory while the app runs in the tray. The window is recreated when opened again.
 - Synced libraries also show their size.
 - New app icon (cloud with up/down arrows).
 - Pointer cursor on all enabled buttons and form controls.
