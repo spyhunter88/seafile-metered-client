@@ -70,6 +70,31 @@ export interface HistoryEntry {
   path: string | null;
 }
 
+export type RevealResult = "Opened" | "Revealed" | "Missing";
+
+export interface UploadFile {
+  status: "add" | "mod" | "del" | "mov" | "newdir" | "deldir" | string;
+  path: string;
+}
+
+export interface UploadTask {
+  repo_id: string;
+  repo_name: string;
+  phase: "Preparing" | "Uploading";
+  step: string;
+  done: number;
+  total: number;
+  rate: number;
+  /** At most 500 entries; `file_count` is the real total. */
+  files: UploadFile[];
+  file_count: number;
+}
+
+/** Badge number: files in each upload, or 1 while the file list is not known yet. */
+export function uploadItemCount(tasks: UploadTask[]): number {
+  return tasks.reduce((n, t) => n + Math.max(1, t.file_count), 0);
+}
+
 export interface HistorySettings {
   max_age_days: number;
   max_records: number;
@@ -113,6 +138,9 @@ export const api = {
   openLibraryOnCloud: (repoId: string, repoName: string) =>
     invoke<void>("open_library_on_cloud", { repoId, repoName }),
   getLibraryErrors: (repoId: string) => invoke<LibraryError[]>("get_library_errors", { repoId }),
+  revealLibraryPath: (repoId: string, path: string | null) =>
+    invoke<RevealResult>("reveal_library_path", { repoId, path }),
+  getUploads: () => invoke<UploadTask[]>("get_uploads"),
   getTransferRate: () => invoke<TransferRate>("get_transfer_rate"),
   getSyncHistory: () => invoke<HistoryEntry[]>("get_sync_history"),
   getHistorySettings: () => invoke<HistorySettings>("get_history_settings"),
@@ -155,6 +183,8 @@ export const events = {
   onTransferRate: (cb: (r: TransferRate) => void): Promise<UnlistenFn> =>
     listen<TransferRate>("transfer-rate", (e) => cb(e.payload)),
   onHistoryUpdated: (cb: () => void): Promise<UnlistenFn> => listen("history-updated", () => cb()),
+  onUploadsUpdated: (cb: (tasks: UploadTask[]) => void): Promise<UnlistenFn> =>
+    listen<UploadTask[]>("uploads-updated", (e) => cb(e.payload)),
 };
 
 export function formatRate(bytesPerSec: number): string {

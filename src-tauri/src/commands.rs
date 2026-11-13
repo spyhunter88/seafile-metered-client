@@ -369,6 +369,70 @@ pub async fn open_library_on_cloud(
 }
 
 #[derive(Serialize)]
+pub enum RevealResult {
+    /// The folder was opened.
+    Opened,
+    /// The file was selected in its folder.
+    Revealed,
+    /// The item no longer exists; its closest existing parent folder was opened.
+    Missing,
+}
+
+/// Shows a file or folder of a library in Explorer. `path` is relative to the
+/// library root (`None` = the root). Deleted items open their nearest parent folder.
+#[tauri::command]
+pub async fn reveal_library_path(
+    app: AppHandle,
+    state: AppStateRef<'_>,
+    repo_id: String,
+    path: Option<String>,
+) -> Result<RevealResult, String> {
+    validate_repo_id(&repo_id)?;
+    let lib = state.get_library(&repo_id).ok_or("Library is not synced locally")?;
+    let root = std::path::PathBuf::from(&lib.local_path);
+    if !root.is_dir() {
+        return Err(format!("Folder does not exist: {}", lib.local_path));
+    }
+    let mut target = root.clone();
+    for comp in path.as_deref().unwrap_or("").split(['/', '\\']) {
+        if comp.is_empty() || comp == "." {
+            continue;
+        }
+        // Stay inside the library folder.
+        if comp == ".." || comp.contains(':') {
+            return Err("Invalid path".into());
+        }
+        target.push(comp);
+    }
+
+    let opener = app.opener();
+    let open_dir = |dir: &std::path::Path| {
+        opener
+            .open_path(dir.to_string_lossy(), None::<&str>)
+            .map_err(|e| format!("Cannot open folder: {e}"))
+    };
+    if target.is_dir() {
+        open_dir(&target)?;
+        return Ok(RevealResult::Opened);
+    }
+    if target.exists() {
+        opener
+            .reveal_item_in_dir(&target)
+            .map_err(|e| format!("Cannot show file: {e}"))?;
+        return Ok(RevealResult::Revealed);
+    }
+    let mut dir = target.as_path();
+    while let Some(parent) = dir.parent() {
+        dir = parent;
+        if dir.is_dir() || dir == root {
+            break;
+        }
+    }
+    open_dir(dir)?;
+    Ok(RevealResult::Missing)
+}
+
+#[derive(Serialize)]
 pub struct LibraryError {
     /// Unix time in seconds; `None` for the current task state.
     pub time: Option<i64>,
@@ -492,6 +556,11 @@ pub fn get_temp_ignore_patterns() -> &'static [crate::ignore_rules::PatternGroup
 #[tauri::command]
 pub fn get_transfer_rate(state: AppStateRef<'_>) -> TransferRate {
     state.transfer_rate()
+}
+
+#[tauri::command]
+pub fn get_uploads(state: AppStateRef<'_>) -> Vec<crate::uploads::UploadTask> {
+    state.uploads.snapshot()
 }
 
 #[tauri::command]

@@ -10,6 +10,7 @@ mod shell_ext;
 mod state;
 mod sync_controller;
 mod tray;
+mod uploads;
 
 use std::sync::Arc;
 
@@ -102,6 +103,8 @@ pub fn run() {
             commands::open_library_folder,
             commands::open_library_on_cloud,
             commands::get_library_errors,
+            commands::reveal_library_path,
+            commands::get_uploads,
             commands::get_transfer_rate,
             commands::get_sync_history,
             commands::get_history_settings,

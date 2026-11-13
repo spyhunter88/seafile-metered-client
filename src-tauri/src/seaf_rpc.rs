@@ -16,6 +16,8 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::Mutex;
 
 const SERVICE: &str = "seafile-rpcserver";
+/// Service of slow calls (e.g. `seafile_diff`) that the daemon runs off its main loop.
+const THREADED_SERVICE: &str = "seafile-threaded-rpcserver";
 const ERROR_PIPE_BUSY: i32 = 231;
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_RESPONSE: u32 = 64 * 1024 * 1024;
@@ -54,7 +56,7 @@ impl SeafRpc {
 
     /// Checks whether any daemon answers on the pipe, regardless of `enabled`.
     pub async fn probe(&self) -> bool {
-        self.call_raw("seafile_is_auto_sync_enabled", &[]).await.is_ok()
+        self.call_raw(SERVICE, "seafile_is_auto_sync_enabled", &[]).await.is_ok()
     }
 
     async fn connect(&self) -> Result<NamedPipeClient, String> {
@@ -75,15 +77,22 @@ impl SeafRpc {
         if !self.enabled.load(Ordering::SeqCst) {
             return Err("Sync engine (seaf-daemon) is not running".into());
         }
-        self.call_raw(fname, args).await
+        self.call_raw(SERVICE, fname, args).await
     }
 
-    async fn call_raw(&self, fname: &str, args: &[Value]) -> Result<Value, String> {
+    async fn call_threaded(&self, fname: &str, args: &[Value]) -> Result<Value, String> {
+        if !self.enabled.load(Ordering::SeqCst) {
+            return Err("Sync engine (seaf-daemon) is not running".into());
+        }
+        self.call_raw(THREADED_SERVICE, fname, args).await
+    }
+
+    async fn call_raw(&self, service: &str, fname: &str, args: &[Value]) -> Result<Value, String> {
         let mut fcall = Vec::with_capacity(args.len() + 1);
         fcall.push(Value::String(fname.to_string()));
         fcall.extend_from_slice(args);
         let request = json!({
-            "service": SERVICE,
+            "service": service,
             "request": serde_json::to_string(&fcall).map_err(|e| e.to_string())?,
         })
         .to_string();
@@ -166,6 +175,30 @@ impl SeafRpc {
     pub async fn get_repo_sync_task(&self, repo_id: &str) -> Result<Option<Value>, String> {
         let ret = self.call("seafile_get_repo_sync_task", &[json!(repo_id)]).await?;
         Ok((!ret.is_null()).then_some(ret))
+    }
+
+    /// Running HTTP transfer of a repo: `ttype` ("upload"/"download"), `rt_state`,
+    /// `block_total`, `block_done`, `rate` (bytes/s). Progress fields are only set
+    /// while blocks are being transferred.
+    pub async fn find_transfer_task(&self, repo_id: &str) -> Result<Option<Value>, String> {
+        let ret = self.call("seafile_find_transfer_task", &[json!(repo_id)]).await?;
+        Ok((!ret.is_null()).then_some(ret))
+    }
+
+    /// Changes between two commits; an empty `old_commit` means "parent of
+    /// `new_commit`". Objects carry `status` (add, del, mod, mov, newdir, deldir),
+    /// `name` (path inside the repo) and `new_name` (for renames).
+    pub async fn diff(&self, repo_id: &str, old_commit: &str, new_commit: &str, fold_dirs: bool) -> Result<Vec<Value>, String> {
+        let ret = self
+            .call_threaded(
+                "seafile_diff",
+                &[json!(repo_id), json!(old_commit), json!(new_commit), json!(if fold_dirs { 1 } else { 0 })],
+            )
+            .await?;
+        Ok(match ret {
+            Value::Array(a) => a,
+            _ => Vec::new(),
+        })
     }
 
     pub async fn get_clone_tasks(&self) -> Result<Vec<Value>, String> {

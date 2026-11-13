@@ -177,6 +177,8 @@ pub struct AppState {
     pub transfer: Mutex<TransferRate>,
     /// Libraries whose `seafile-ignore.txt` already matches the preference this session.
     pub ignore_applied: Mutex<std::collections::HashSet<String>>,
+    /// Libraries currently preparing or sending an upload.
+    pub uploads: crate::uploads::UploadQueue,
 }
 
 const SESSION_KEY: &[u8] = b"session";
@@ -207,6 +209,7 @@ impl AppState {
             lib_lock: tokio::sync::Mutex::new(()),
             transfer: Mutex::new(TransferRate::default()),
             ignore_applied: Mutex::new(Default::default()),
+            uploads: Default::default(),
         })
     }
 

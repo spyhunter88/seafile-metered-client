@@ -8,14 +8,24 @@ import {
   type NetworkCost,
   type RemoteRepo,
   type SessionInfo,
+  type UploadTask,
+  uploadItemCount,
 } from "../api";
 import { NetworkBadge } from "./Badges";
 import { HistoryPanel } from "./HistoryPanel";
 import { LibraryRow } from "./LibraryRow";
 import { StatusBar } from "./StatusBar";
 import { useToast } from "./Toasts";
+import { UploadsPanel } from "./UploadsPanel";
 
 const POLL_MS = 3000;
+
+const TABS = [
+  { id: "libraries", label: "Libraries" },
+  { id: "uploads", label: "Uploading" },
+  { id: "history", label: "Sync history" },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
 
 export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLoggedOut: () => void }) {
   const toast = useToast();
@@ -27,10 +37,17 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
   const [loadingRemote, setLoadingRemote] = useState(true);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
-  const [tab, setTab] = useState<"libraries" | "history">("libraries");
+  const [tab, setTab] = useState<Tab>("libraries");
+  const [uploads, setUploads] = useState<UploadTask[]>([]);
+  const uploadCount = uploadItemCount(uploads);
 
   useEffect(() => {
     getVersion().then(setVersion).catch(console.error);
+    api.getUploads().then(setUploads).catch(console.error);
+    const sub = events.onUploadsUpdated(setUploads);
+    return () => {
+      sub.then((un) => un());
+    };
   }, []);
 
   const refreshStatus = useCallback(() => {
@@ -175,15 +192,23 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
 
       <main className="flex-1 overflow-auto p-4">
         <div className="mb-2 flex items-center gap-4">
-          {(["libraries", "history"] as const).map((t) => (
+          {TABS.map((t) => (
             <button
-              key={t}
-              className={`border-b-2 pb-0.5 text-xs font-semibold tracking-wide uppercase ${
-                tab === t ? "border-sky-600 text-slate-700" : "border-transparent text-slate-400 hover:text-slate-600"
+              key={t.id}
+              className={`flex items-center gap-1.5 border-b-2 pb-0.5 text-xs font-semibold tracking-wide uppercase ${
+                tab === t.id ? "border-sky-600 text-slate-700" : "border-transparent text-slate-400 hover:text-slate-600"
               }`}
-              onClick={() => setTab(t)}
+              onClick={() => setTab(t.id)}
             >
-              {t === "libraries" ? "Libraries" : "Sync history"}
+              {t.label}
+              {t.id === "uploads" && uploadCount > 0 && (
+                <span
+                  className="min-w-4 rounded-full bg-sky-600 px-1 text-center text-[10px] leading-4 font-semibold text-white normal-case"
+                  title={`${uploadCount} waiting or uploading`}
+                >
+                  {uploadCount > 999 ? "999+" : uploadCount}
+                </span>
+              )}
             </button>
           ))}
           <div className="flex-1" />
@@ -203,6 +228,8 @@ export function Dashboard({ session, onLoggedOut }: { session: SessionInfo; onLo
 
         {tab === "history" ? (
           <HistoryPanel />
+        ) : tab === "uploads" ? (
+          <UploadsPanel tasks={uploads} />
         ) : (
           <>
             {remoteError && (

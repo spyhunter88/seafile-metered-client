@@ -8,10 +8,13 @@ import {
   type HistoryEntry,
   type HistorySettings,
 } from "../api";
+import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { useToast } from "./Toasts";
+import { useReveal } from "./useReveal";
 
 const AGE_OPTIONS = [1, 3, 7, 14, 30, 90, 365];
 const RECORD_OPTIONS = [50, 100, 200, 500, 1000, 5000];
+const PAGE_SIZE = 20;
 
 const selectCls =
   "rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-xs outline-none focus:border-sky-500 disabled:opacity-50";
@@ -25,6 +28,32 @@ export function HistoryPanel() {
   // Click any time to switch the whole list between "5 minutes ago" and full date/time.
   const [absolute, setAbsolute] = useState(false);
   const now = useNow(30_000);
+  const reveal = useReveal();
+  const [page, setPage] = useState(0);
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: HistoryEntry } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const pageCount = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  // Clearing or pruning can shrink the list below the current page.
+  const current = Math.min(page, pageCount - 1);
+  const visible = entries.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+
+  function menuItems(e: HistoryEntry): MenuItem[] {
+    return [
+      {
+        label: e.path ? "Show in Explorer" : "Open library folder",
+        hint: e.path ? "Select the item in its folder; opens the folder if the item was deleted" : undefined,
+        onSelect: () => reveal(e.repo_id, e.path),
+      },
+      ...(e.path ? [{ label: "Open library folder", onSelect: () => reveal(e.repo_id, null) }] : []),
+      { separator: true },
+      {
+        label: "Copy path",
+        disabled: !e.path,
+        onSelect: () => navigator.clipboard.writeText(e.path ?? "").catch(console.error),
+      },
+    ];
+  }
 
   const load = useCallback(() => {
     api.getSyncHistory().then(setEntries).catch(console.error);
@@ -111,8 +140,15 @@ export function HistoryPanel() {
           <div className="px-4 py-8 text-center text-sm text-slate-500">No sync activity recorded yet.</div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {entries.map((e) => (
-              <li key={e.id} className="flex items-start gap-3 px-4 py-2 text-xs">
+            {visible.map((e) => (
+              <li
+                key={e.id}
+                className={`flex items-start gap-3 px-4 py-2 text-xs ${menu?.entry.id === e.id ? "bg-slate-50" : ""}`}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
+                }}
+              >
                 <span
                   className={`mt-1 h-2 w-2 shrink-0 rounded-full ${e.kind === "Error" ? "bg-rose-500" : "bg-emerald-500"}`}
                   title={e.kind === "Error" ? "Error" : "Synced"}
@@ -130,6 +166,33 @@ export function HistoryPanel() {
           </ul>
         )}
       </div>
+
+      {pageCount > 1 && (
+        <div className="mt-2 flex items-center justify-end gap-3 text-xs text-slate-500">
+          <span>
+            {current * PAGE_SIZE + 1}–{Math.min((current + 1) * PAGE_SIZE, entries.length)} of {entries.length}
+          </span>
+          <button
+            className="rounded px-2 py-0.5 ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-40"
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+          >
+            ‹ Prev
+          </button>
+          <span>
+            Page {current + 1} / {pageCount}
+          </span>
+          <button
+            className="rounded px-2 py-0.5 ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-40"
+            disabled={current >= pageCount - 1}
+            onClick={() => setPage(current + 1)}
+          >
+            Next ›
+          </button>
+        </div>
+      )}
+
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.entry)} onClose={closeMenu} />}
     </div>
   );
 }

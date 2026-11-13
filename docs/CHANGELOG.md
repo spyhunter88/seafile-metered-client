@@ -3,6 +3,16 @@
 Versions follow `version` in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`
 (keep the three in sync). Feature details: [feature.md](feature.md).
 
+## Unreleased
+
+### Added
+- **Uploading** tab with a badge counting items waiting or being uploaded. Per library: phase (scanning local
+  changes / uploading), progress, speed and the files of the commit being uploaded (up to 500 listed).
+  seaf-daemon reports progress and speed per library, not per file.
+- **Sync history**: right-click an entry to show the file or folder in Explorer (opens the closest folder if
+  the item was deleted), open the library folder, or copy the path. 20 entries per page.
+- Completed syncs in the history now record the changed file, or the folder containing all changes.
+
 ## 0.2.0 – 2026-11-12
 
 ### Added
