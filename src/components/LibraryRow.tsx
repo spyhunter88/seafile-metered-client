@@ -16,7 +16,106 @@ interface Props {
 const btn = "rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 whitespace-nowrap";
 const btnPrimary = `${btn} bg-sky-600 text-white hover:bg-sky-700`;
 const btnSecondary = `${btn} bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50`;
-const btnDanger = `${btn} bg-white text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50`;
+
+const iconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50 transition-colors";
+const iconBtnPrimary = `${iconBtn} bg-sky-600 text-white hover:bg-sky-700`;
+const iconBtnSecondary = `${iconBtn} bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50 hover:text-slate-800`;
+const iconBtnDanger = `${iconBtn} bg-white text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50`;
+
+function PlayIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M8 5.14v14l11-7-11-7z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+    </svg>
+  );
+}
+
+function SyncIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  );
+}
+
+function UnlinkIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71" />
+      <path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71" />
+      <line x1="8" y1="2" x2="8" y2="5" />
+      <line x1="2" y1="8" x2="5" y2="8" />
+      <line x1="16" y1="19" x2="16" y2="22" />
+      <line x1="19" y1="16" x2="22" y2="16" />
+    </svg>
+  );
+}
+
+function CloudDownloadIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 13v8l-4-4" />
+      <path d="m12 21 4-4" />
+      <path d="M4.393 15.269A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.436 8.284" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
 
 export function LibraryRow({ remote, local, onChanged }: Props) {
   const toast = useToast();
@@ -156,36 +255,62 @@ export function LibraryRow({ remote, local, onChanged }: Props) {
               Bypass Metered
             </label>
             {local.is_user_paused ? (
-              <button className={btnSecondary} disabled={busy} onClick={() => run(() => api.toggleLibraryPause(repoId, false))}>
-                Resume
+              <button
+                className={iconBtnSecondary}
+                disabled={busy}
+                title="Resume"
+                aria-label="Resume"
+                onClick={() => run(() => api.toggleLibraryPause(repoId, false))}
+              >
+                <PlayIcon />
               </button>
             ) : (
-              <button className={btnSecondary} disabled={busy} onClick={() => run(() => api.toggleLibraryPause(repoId, true))}>
-                Pause
+              <button
+                className={iconBtnSecondary}
+                disabled={busy}
+                title="Pause"
+                aria-label="Pause"
+                onClick={() => run(() => api.toggleLibraryPause(repoId, true))}
+              >
+                <PauseIcon />
               </button>
             )}
             {paused && (
               <button
-                className={btnPrimary}
+                className={iconBtnPrimary}
                 disabled={busy}
-                title="Run one sync now, then stay paused"
+                title="Force sync (run one sync now, then stay paused)"
+                aria-label="Force sync"
                 onClick={() => run(() => api.forceSync(repoId), "Force sync started")}
               >
-                Force sync
+                <SyncIcon />
               </button>
             )}
-            <button className={btnDanger} disabled={busy} onClick={confirmUnsync}>
-              Unsync
+            <button
+              className={iconBtnDanger}
+              disabled={busy}
+              title="Unsync (keep local files)"
+              aria-label="Unsync"
+              onClick={confirmUnsync}
+            >
+              <UnlinkIcon />
             </button>
           </div>
         ) : (
           <button
-            className={btnPrimary}
+            className={setupOpen ? iconBtnSecondary : iconBtnPrimary}
             disabled={busy || remote?.encrypted}
-            title={remote?.encrypted ? "Encrypted libraries are not supported yet" : undefined}
+            title={
+              remote?.encrypted
+                ? "Encrypted libraries are not supported yet"
+                : setupOpen
+                  ? "Cancel"
+                  : "Sync this library"
+            }
+            aria-label={setupOpen ? "Cancel" : "Sync this library"}
             onClick={() => setSetupOpen((v) => !v)}
           >
-            {setupOpen ? "Cancel" : "Sync…"}
+            {setupOpen ? <CloseIcon /> : <CloudDownloadIcon />}
           </button>
         )}
       </div>
